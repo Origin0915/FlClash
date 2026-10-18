@@ -2,6 +2,11 @@ name: Build Cloud APK
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'FlClash 版本 tag（留空 = 自动选最新稳定版，例如 v0.9.2）'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -10,10 +15,53 @@ jobs:
   android:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Resolve version
+        id: tag
+        run: |
+          set -e
+          raw="${{ inputs.tag }}"
+          if [ -z "$raw" ]; then
+            raw=$(git ls-remote --tags --refs https://github.com/chen08209/FlClash.git \
+              | awk -F/ '{print $3}' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V | tail -1)
+          fi
+          [ -n "$raw" ] || { echo "没有找到可用的 tag"; exit 1; }
+          tag="v${raw#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "将构建 $tag"
+
+      - name: Checkout patch repo
+        uses: actions/checkout@v4
+
+      - name: Checkout FlClash ${{ steps.tag.outputs.tag }}
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          repository: chen08209/FlClash
+          ref: ${{ steps.tag.outputs.tag }}
+          path: src
+          fetch-depth: 0
+          submodules: false
+
+      - name: Apply cloud patch
+        working-directory: src
+        run: |
+          set -e
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git submodule update --init --recursive
+
+          echo "== 应用云朵补丁 =="
+          git apply --3way ../tool/cloud/restore-cloud-icon.patch
+
+          echo "== 修改包名与应用名 =="
+          sed -i 's/applicationId = "com.follow.clash"/applicationId = "com.follow.clash.cloud"/' android/app/build.gradle.kts
+          grep -q 'applicationId = "com.follow.clash.cloud"' android/app/build.gradle.kts || {
+            echo "包名修改失败：build.gradle.kts 结构可能变了"; exit 1;
+          }
+          sed -i 's|<string name="app_name">FlClash</string>|<string name="app_name">FlClash Cloud</string>|' android/common/src/main/res/values/strings.xml
+          grep -q 'FlClash Cloud' android/common/src/main/res/values/strings.xml || {
+            echo "应用名修改失败：strings.xml 结构可能变了"; exit 1;
+          }
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -45,6 +93,7 @@ jobs:
           java-version: '17'
 
       - name: Fetch CA certificates
+        working-directory: src
         env:
           CA_BUNDLE: cacert-2026-09-25.pem
           CA_BUNDLE_SHA256: a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505
@@ -54,9 +103,11 @@ jobs:
           echo "$CA_BUNDLE_SHA256  $bundle" | sha256sum -c -
 
       - name: Dependencies
+        working-directory: src
         run: flutter pub get
 
       - name: Build APK
+        working-directory: src
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: dart setup.dart android --arch arm64 -v
@@ -64,6 +115,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: flclash-cloud-apk
-          path: dist/*.apk
+          name: flclash-cloud-${{ steps.tag.outputs.tag }}
+          path: src/dist/*.apk
           if-no-files-found: error
