@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
@@ -21,9 +22,12 @@ const _infoGap = 4.0;
 
 double get _profileItemHeight {
   final measure = globalState.measure;
-  return measure.textHeight(AppTextStyle.headline) +
-      _infoGap +
-      measure.textHeight(AppTextStyle.footnote) +
+  return max(
+        SourceIcon.size,
+        measure.textHeight(AppTextStyle.headline) +
+            _infoGap +
+            measure.textHeight(AppTextStyle.footnote),
+      ) +
       2 * listRowVerticalPadding;
 }
 
@@ -301,6 +305,33 @@ class ProfileItem extends ConsumerWidget {
     );
   }
 
+  void _handleShowSubscriptionInfo(BuildContext context) {
+    final info = profile.subscriptionInfo;
+    if (info == null) return;
+    unawaited(
+      dialogs.showCommonDialog<void>(
+        context: context,
+        child: Builder(
+          builder: (context) {
+            return CommonDialog(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              title: context.appLocalizations.subscriptionInfo,
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: Text(context.appLocalizations.confirm),
+                ),
+              ],
+              child: SubscriptionInfoDetailView(subscriptionInfo: info),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   Future updateProfile(WidgetRef ref) async {
     if (profile.type != ProfileType.url) return;
     await globalState.loadingRun(() async {
@@ -401,6 +432,7 @@ class ProfileItem extends ConsumerWidget {
     final appLocalizations = context.appLocalizations;
     final isUrl = profile.type == ProfileType.url;
     final isCustom = profile.type == ProfileType.custom;
+    final subscriptionInfo = _subscriptionInfo;
     return [
       CommonPopupMenuItem(
         glyph: AppGlyphs.edit,
@@ -450,6 +482,14 @@ class ProfileItem extends ConsumerWidget {
                 _handlePreview(context);
               },
             ),
+            if (subscriptionInfo != null && subscriptionInfo.usage != null)
+              CommonPopupMenuItem(
+                glyph: AppGlyphs.dataUsage,
+                label: appLocalizations.subscriptionInfo,
+                onPressed: () {
+                  _handleShowSubscriptionInfo(context);
+                },
+              ),
             if (isUrl)
               CommonPopupMenuItem(
                 glyph: AppGlyphs.copy,
@@ -494,8 +534,22 @@ class ProfileItem extends ConsumerWidget {
         },
         child: ListItem(
           key: Key(profile.id.toString()),
+          horizontalTitleGap: 12,
+          padding: const EdgeInsets.only(left: SourceIcon.inset, right: 16),
           minTileHeight: _profileItemHeight,
           minVerticalPadding: listRowVerticalPadding,
+          leading: SourceIcon(
+            kind: switch (profile.type) {
+              ProfileType.url => SourceKind.remote,
+              ProfileType.file => SourceKind.file,
+              ProfileType.custom => SourceKind.custom,
+            },
+            usage: subscriptionInfo?.usage,
+            tooltip: context.appLocalizations.subscriptionInfo,
+            onPressed: subscriptionInfo?.usage == null
+                ? null
+                : () => _handleShowSubscriptionInfo(context),
+          ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             spacing: 8,
