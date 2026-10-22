@@ -63,6 +63,14 @@ jobs:
             echo "应用名修改失败：strings.xml 结构可能变了"; exit 1;
           }
 
+          echo "== 配置固定签名 =="
+          cp ../tool/cloud/cloud-release.jks android/app/keystore.jks
+          cat > android/local.properties <<KEYSTORE
+keyAlias=cloudkey
+storePassword=flclash-cloud-2026
+keyPassword=flclash-cloud-2026
+KEYSTORE
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
