@@ -65,11 +65,7 @@ jobs:
 
           echo "== 配置固定签名 =="
           cp ../tool/cloud/cloud-release.jks android/app/keystore.jks
-          cat > android/local.properties <<KEYSTORE
-keyAlias=cloudkey
-storePassword=flclash-cloud-2026
-keyPassword=flclash-cloud-2026
-KEYSTORE
+          printf 'keyAlias=cloudkey\nstorePassword=flclash-cloud-2026\nkeyPassword=flclash-cloud-2026\n' > android/local.properties
 
       - name: Setup Go
         uses: actions/setup-go@v5
